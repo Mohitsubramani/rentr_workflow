@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1026763828252",
+    "project_id": "rentr-workflow",
+    "storage_bucket": "rentr-workflow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026763828252:android:95cf51189fe1046597c3d9",
+        "android_client_info": {
+          "package_name": "com.example.rentr_workflow"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1026763828252-6lpt37bdamna5rg3fdgjhh5u3ru5c8st.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.rentr_workflow",
+            "certificate_hash": "5b7beffb9f114c2b03e89bd91016ea12a2c44f60"
+          }
+        },
+        {
+          "client_id": "1026763828252-ufmtftedmdl60fptfhs7t6gkkfskd2ve.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqF1k5rbraKu-NX9PG4P9K9xbY1S-FQcQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1026763828252-ufmtftedmdl60fptfhs7t6gkkfskd2ve.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
