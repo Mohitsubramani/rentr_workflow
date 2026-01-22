@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../notifications/notification_screen.dart';
 import '../portfolio/add_work_screen.dart';
 import '../../core/services/email_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/custom_widgets.dart';
 
 class ContractorHomeScreen extends StatefulWidget {
   const ContractorHomeScreen({super.key});

@@ -8,6 +8,7 @@ import 'features/auth/role_selection_screen.dart';
 import 'features/profile/create_profile_screen.dart';
 import 'features/home/agent_home_screen.dart' as agent;
 import 'features/home/contractor_home_screen.dart' as contractor;
+import 'core/theme/app_theme.dart';
 
 
 void main() async {
@@ -21,10 +22,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Rentr Workflow',
-      home: AuthGate(),
+      theme: AppTheme.lightTheme,
+      home: const AuthGate(),
     );
   }
 }

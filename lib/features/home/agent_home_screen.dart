@@ -5,6 +5,8 @@ import '../notifications/notification_screen.dart';
 import 'create_job_screen.dart';
 import '../services/razorpay_service.dart';
 import '../../core/services/email_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/widgets/custom_widgets.dart';
 
 
 class AgentHomeScreen extends StatefulWidget {
@@ -84,6 +86,114 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
     });
   }
 
+  Widget _buildBidsSheet(String jobId, List<String> bids) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Contractor Bids',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: bids.length,
+              itemBuilder: (context, index) {
+                final contractorId = bids[index];
+                return FutureBuilder<Map<String, dynamic>>(
+                  future: _getContractorDetails(contractorId),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const LoadingWidget();
+                    }
+                    final data = snapshot.data!;
+                    return ContractorBidCard(
+                      contractorName: data['name'] ?? 'Unknown',
+                      expertise: data['expertise'] ?? 'Unspecified',
+                      rating: (data['avgRating'] ?? 0.0).toDouble(),
+                      reviewCount: data['reviewCount'] ?? 0,
+                      onAssign: () {
+                        assignContractor(jobId, contractorId);
+                        Navigator.pop(context);
+                      },
+                      onReject: () {
+                        // Handle rejection if needed
+                        Navigator.pop(context);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> _getContractorDetails(String uid) async {
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
+    
+    final reviewsSnapshot = await FirebaseFirestore.instance
+        .collection('reviews')
+        .where('contractorId', isEqualTo: uid)
+        .get();
+
+    double avgRating = 0;
+    if (reviewsSnapshot.docs.isNotEmpty) {
+      double total = 0;
+      for (var doc in reviewsSnapshot.docs) {
+        total += (doc['rating'] ?? 0).toDouble();
+      }
+      avgRating = total / reviewsSnapshot.docs.length;
+    }
+
+    return {
+      'name': userDoc.data()?['name'] ?? 'Unknown',
+      'expertise': userDoc.data()?['expertise'] ?? 'Unspecified',
+      'avgRating': avgRating,
+      'reviewCount': reviewsSnapshot.docs.length,
+    };
+  }
+
+  void _showInvoiceDetails(
+    BuildContext context,
+    DocumentSnapshot doc,
+    Map<String, dynamic> invoice,
+    String status,
+    double estimatedAmount,
+    double agentEditedAmount,
+    double finalAmount,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Invoice Details',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 16),
+            // You can add invoice detail UI here
+          ],
+        ),
+      ),
+    );
+  }
+
   /* ───────── UI ───────── */
 
   @override
@@ -94,17 +204,19 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Agent Home'),
+          title: const Text('Agent Dashboard'),
+          elevation: 0,
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Active Jobs'),
-              Tab(text: 'Completed Jobs'),
-              Tab(text: 'Invoices'),
+              Tab(text: 'Active Jobs', icon: Icon(Icons.work_outline)),
+              Tab(text: 'Completed', icon: Icon(Icons.check_circle_outline)),
+              Tab(text: 'Invoices', icon: Icon(Icons.receipt_long_outlined)),
             ],
+            indicatorSize: TabBarIndicatorSize.tab,
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.notifications),
+              icon: const Icon(Icons.notifications_outlined),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -115,7 +227,7 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.logout),
+              icon: const Icon(Icons.logout_outlined),
               onPressed: () async {
                 await FirebaseAuth.instance.signOut();
               },
@@ -151,13 +263,26 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
                     builder: (context, snapshot) {
                       if (!snapshot.hasData ||
                           snapshot.data!.docs.isEmpty) {
-                        return const Center(
-                            child: Text('No active jobs'));
+                        return EmptyStateWidget(
+                          icon: Icons.work_outline,
+                          title: 'No Active Jobs',
+                          subtitle: 'Create your first job to get started',
+                          onAction: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const CreateJobScreen(),
+                              ),
+                            );
+                          },
+                          actionLabel: 'Create Job',
+                        );
                       }
 
                       final jobs = snapshot.data!.docs;
 
                       return ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: jobs.length,
                         itemBuilder: (context, index) {
                           final doc = jobs[index];
@@ -170,67 +295,35 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
                                   ? List.from(job['appliedBy'])
                                   : [];
 
-                          return Card(
-                            margin: const EdgeInsets.all(10),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    job['title'] ?? '',
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(job['description'] ?? ''),
-                                  const SizedBox(height: 6),
-                                  Text('Status: $status'),
-
-                                  if (status == 'applied')
-                                    ...appliedBy.map((cid) {
-                                      return FutureBuilder<String>(
-                                        future:
-                                            getContractorName(cid),
-                                        builder:
-                                            (context, nameSnap) {
-                                          final name =
-                                              nameSnap.data ??
-                                                  'Loading';
-
-                                          return Row(
-                                            children: [
-                                              Text(name),
-                                              const SizedBox(
-                                                  width: 8),
-                                              ElevatedButton(
-                                                onPressed: () =>
-                                                    assignContractor(
-                                                        doc.id,
-                                                        cid),
-                                                child: const Text(
-                                                    'Assign'),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      );
-                                    }),
-
-                                  if (status == 'assigned' ||
-                                      status == 'in_progress')
-                                    FutureBuilder<String>(
-                                      future: getContractorName(
-                                          job['assignedTo']),
-                                      builder: (context, snap) =>
-                                          Text(
-                                              'Contractor: ${snap.data ?? ''}'),
-                                    ),
-                                ],
-                              ),
-                            ),
+                          return JobCard(
+                            title: job['title'] ?? 'Untitled Job',
+                            description: job['description'] ?? '',
+                            status: status,
+                            statusLabel: status
+                                .replaceAll('_', ' ')
+                                .toUpperCase(),
+                            onTap: () {
+                              // Handle job tap
+                            },
+                            actions: [
+                              if (status == 'applied' && appliedBy.isNotEmpty)
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.person, size: 16),
+                                  label: const Text('View Bids'),
+                                  onPressed: () {
+                                    showModalBottomSheet(
+                                      context: context,
+                                      builder: (context) =>
+                                          _buildBidsSheet(doc.id, appliedBy.cast<String>()),
+                                      shape: const RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.vertical(
+                                          top: Radius.circular(16),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                            ],
                           );
                         },
                       );
@@ -248,19 +341,25 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
                     builder: (context, snapshot) {
                       if (!snapshot.hasData ||
                           snapshot.data!.docs.isEmpty) {
-                        return const Center(
-                            child: Text('No completed jobs'));
+                        return EmptyStateWidget(
+                          icon: Icons.check_circle_outline,
+                          title: 'No Completed Jobs',
+                          subtitle: 'Your completed jobs will appear here',
+                        );
                       }
 
                       return ListView(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
                         children: snapshot.data!.docs.map((doc) {
                           final job = doc.data()
                               as Map<String, dynamic>;
 
-                          return ListTile(
-                            title: Text(job['title'] ?? ''),
-                            subtitle:
-                                const Text('Job completed'),
+                          return JobCard(
+                            title: job['title'] ?? 'Untitled Job',
+                            description: job['description'] ?? '',
+                            status: 'completed',
+                            statusLabel: 'COMPLETED',
+                            onTap: () {},
                           );
                         }).toList(),
                       );

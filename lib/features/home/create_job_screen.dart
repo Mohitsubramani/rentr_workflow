@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:rentr_workflow/core/constants/job_status.dart';
+import '../../core/theme/app_theme.dart';
 
 class CreateJobScreen extends StatefulWidget {
   const CreateJobScreen({super.key});
@@ -64,16 +65,21 @@ class _CreateJobScreenState extends State<CreateJobScreen> {
         'timeline': selectedTimeline,
         'agentId': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
-
-        // 🔴 JOB STATUS — IMPORTANT
         'status': JobStatus.open.value,
       });
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Job created successfully')),
+        );
+        Navigator.pop(context);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to create job")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -82,100 +88,190 @@ class _CreateJobScreenState extends State<CreateJobScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Create Job")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Job Title
-            const Text(
-              'Job Title *',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: "Enter job title",
-                hintText: 'e.g., Kitchen Tap Repair, Electrical Wiring',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+      appBar: AppBar(
+        title: const Text("Create Job"),
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Post a New Job',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Provide details about the work you need',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 24),
+                const SizedBox(height: 32),
 
-            // Required Expertise
-            const Text(
-              'Required Expertise *',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            DropdownButton<String>(
-              isExpanded: true,
-              hint: const Text('Select expertise'),
-              value: selectedExpertise,
-              items: expertise.map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  selectedExpertise = newValue;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Timeline
-            const Text(
-              'Work Timeline *',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () => _selectTimeline(context),
-              child: Text(
-                selectedTimeline == null
-                    ? 'Select Timeline Date'
-                    : 'Timeline: ${selectedTimeline!.toLocal().toString().split(' ')[0]}',
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Job Description
-            const Text(
-              'Job Description *',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: descriptionController,
-              decoration: InputDecoration(
-                labelText: "Enter detailed job description",
-                hintText: 'Provide specific details about the work needed...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                // Job Title
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Job Title',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: titleController,
+                      enabled: !isLoading,
+                      decoration: InputDecoration(
+                        hintText: 'e.g., Kitchen Tap Repair',
+                        prefixIcon: const Icon(Icons.work_outline),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              maxLines: 5,
-            ),
-            const SizedBox(height: 32),
+                const SizedBox(height: 24),
 
-            // Create Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: isLoading ? null : createJob,
-                child: isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text("Create Job"),
-              ),
+                // Required Expertise
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Required Expertise',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppTheme.borderColor),
+                        borderRadius: BorderRadius.circular(12),
+                        color: const Color(0xFFF9FAFB),
+                      ),
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        hint: Text(
+                          'Select expertise',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.textTertiary,
+                          ),
+                        ),
+                        value: selectedExpertise,
+                        items: expertise.map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            selectedExpertise = newValue;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Work Timeline
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Work Timeline',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () => _selectTimeline(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.borderColor),
+                          borderRadius: BorderRadius.circular(12),
+                          color: const Color(0xFFF9FAFB),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today_outlined, color: AppTheme.textSecondary),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                selectedTimeline != null
+                                    ? '${selectedTimeline!.day}/${selectedTimeline!.month}/${selectedTimeline!.year}'
+                                    : 'Select work timeline',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: selectedTimeline != null
+                                      ? AppTheme.textPrimary
+                                      : AppTheme.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Job Description
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Job Description',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: descriptionController,
+                      enabled: !isLoading,
+                      maxLines: 5,
+                      decoration: InputDecoration(
+                        hintText: 'Provide specific details about the work needed...',
+                        prefixIcon: const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: Icon(Icons.description_outlined),
+                        ),
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // Create Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: isLoading ? null : createJob,
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Text('Create Job'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
