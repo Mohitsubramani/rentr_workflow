@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../notifications/notification_screen.dart';
 import '../portfolio/add_work_screen.dart';
+import '../../core/services/email_service.dart';
 
 class ContractorHomeScreen extends StatefulWidget {
   const ContractorHomeScreen({super.key});
@@ -39,6 +40,24 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         .collection('invoices')
         .where('contractorId', isEqualTo: contractorId)
         .snapshots();
+  }
+
+  Future<String> getJobName(String jobId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('jobs')
+        .doc(jobId)
+        .get();
+    if (!doc.exists) return 'Unknown Job';
+    return doc.data()?['title'] ?? 'Unknown Job';
+  }
+
+  Future<String?> getContractorExpertise(String contractorId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(contractorId)
+        .get();
+    if (!doc.exists) return null;
+    return doc.data()?['expertise'] as String?;
   }
 
   // 🟢 APPLY FOR JOB
@@ -82,14 +101,16 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     });
 
     // 🧾 create invoice
-    await FirebaseFirestore.instance.collection('invoices').doc(jobId).set({
-      'jobId': jobId,
-      'agentId': agentId,
-      'contractorId': user.uid,
-      'amount': 0,
-      'status': 'pending',
-      'createdAt': Timestamp.now(),
-    });
+   await FirebaseFirestore.instance.collection('invoices').doc(jobId).set({
+  'jobId': jobId,
+  'jobTitle': jobTitle, // 🔥 MUST ADD – idhu illena notification blank
+  'agentId': agentId,
+  'contractorId': user.uid,
+  'amount': 0,
+  'status': 'pending',
+  'createdAt': Timestamp.now(),
+});
+
   }
 
   @override
@@ -163,41 +184,57 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   /* ================= AVAILABLE JOBS ================= */
 
   Widget _availableJobs(User user) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('jobs')
-          .where('status', whereIn: ['open', 'applied'])
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('No jobs available'));
+    return FutureBuilder<String?>(
+      future: getContractorExpertise(user.uid),
+      builder: (context, expertiseSnapshot) {
+        if (expertiseSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
         }
 
-        final jobs = snapshot.data!.docs;
+        final contractorExpertise = expertiseSnapshot.data;
+        
+        if (contractorExpertise == null) {
+          return const Center(child: Text('Please complete your profile'));
+        }
 
-        return ListView.builder(
-          itemCount: jobs.length,
-          itemBuilder: (context, index) {
-            final doc = jobs[index];
-            final job = doc.data() as Map<String, dynamic>;
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('jobs')
+              .where('status', whereIn: ['open', 'applied'])
+              .where('expertise', isEqualTo: contractorExpertise)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(child: Text('No jobs available for your expertise'));
+            }
 
-            final appliedBy = job['appliedBy'] ?? [];
-            final hasApplied = appliedBy.contains(user.uid);
+            final jobs = snapshot.data!.docs;
 
-            return ListTile(
-              title: Text(job['title'] ?? ''),
-              subtitle: Text(job['description'] ?? ''),
-              trailing: hasApplied
-                  ? const Text(
-                      'Applied',
-                      style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold),
-                    )
-                  : ElevatedButton(
-                      onPressed: () => applyForJob(doc.id),
-                      child: const Text('Apply'),
-                    ),
+            return ListView.builder(
+              itemCount: jobs.length,
+              itemBuilder: (context, index) {
+                final doc = jobs[index];
+                final job = doc.data() as Map<String, dynamic>;
+
+                final appliedBy = job['appliedBy'] ?? [];
+                final hasApplied = appliedBy.contains(user.uid);
+
+                return ListTile(
+                  title: Text(job['title'] ?? ''),
+                  subtitle: Text(job['description'] ?? ''),
+                  trailing: hasApplied
+                      ? const Text(
+                          'Applied',
+                          style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold),
+                        )
+                      : ElevatedButton(
+                          onPressed: () => applyForJob(doc.id),
+                          child: const Text('Apply'),
+                        ),
+                );
+              },
             );
           },
         );
@@ -253,6 +290,21 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                             ? 'in_progress'
                             : 'completed';
 
+                        // Get agent info for email
+                        final agentDoc = await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(job['agentId'])
+                            .get();
+                        final agentEmail = agentDoc.data()?['email'] ?? '';
+                        final agentName = agentDoc.data()?['name'] ?? 'Agent';
+
+                        // Get contractor info
+                        final contractorDoc = await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(uid)
+                            .get();
+                        final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
+
                         await FirebaseFirestore.instance
                             .collection('jobs')
                             .doc(doc.id)
@@ -261,6 +313,24 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           if (newStatus == 'completed')
                             'completedAt': Timestamp.now(),
                         });
+
+                        // Send email notification
+                        if (newStatus == 'in_progress') {
+                          await EmailService.sendJobStartedEmail(
+                            agentEmail: agentEmail,
+                            agentName: agentName,
+                            contractorName: contractorName,
+                            jobTitle: job['title'] ?? 'Job',
+                          );
+                        } else if (newStatus == 'completed') {
+                          await EmailService.sendJobCompletedEmail(
+                            agentEmail: agentEmail,
+                            agentName: agentName,
+                            contractorName: contractorName,
+                            jobTitle: job['title'] ?? 'Job',
+                          );
+                        }
+
                         await FirebaseFirestore.instance
     .collection('notifications')
     .add({
@@ -366,16 +436,31 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Job ID: ${data['jobId']}',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold),
+                    FutureBuilder<String>(
+                      future: getJobName(data['jobId']),
+                      builder: (context, snapshot) {
+                        final jobName = snapshot.data ?? 'Loading...';
+                        return Text(
+                          'Job: $jobName',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        );
+                      },
                     ),
                     const SizedBox(height: 6),
                     Text('Status: $status'),
                     const SizedBox(height: 6),
                     Text('Amount: ₹$amount'),
                     const SizedBox(height: 10),
+
+                    if (status == 'paid')
+  const Text(
+    'Payment received successfully',
+    style: TextStyle(
+      color: Colors.green,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+
 
                     // 🔹 REVISED – AGENT EDITED AMOUNT
 if (status == 'revised') ...[
@@ -480,30 +565,35 @@ if (status == 'revised') ...[
                                       'estimatedAt':
                                           Timestamp.now(),
                                     });
-                                    await FirebaseFirestore.instance
-    .collection('notifications')
-    .add({
+                                    final userDoc = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(uid)
+    .get();
+
+final fromName = userDoc.data()?['name'] ?? 'Contractor';
+
+await FirebaseFirestore.instance.collection('notifications').add({
   'type': 'invoice_estimated',
 
-  // 🔑 receiver
+  // receiver
   'toUserId': data['agentId'],
 
-  // 🔑 sender
+  // sender
   'fromUserId': uid,
+  'fromUserName': fromName,
 
-  // 🔑 REQUIRED FOR UI (THIS FIXES BLANK)
+  // REQUIRED for notification UI
   'title': 'Estimation Submitted',
   'message':
-      'Contractor submitted estimation ₹$v for job "${data['jobTitle'] ?? data['jobId']}"',
+      '$fromName submitted estimation ₹$v for job "${data['jobTitle']}"',
 
-  // 🔑 meta
+  // metadata
   'jobId': data['jobId'],
-  'jobTitle': data['jobTitle'] ?? '',
+  'jobTitle': data['jobTitle'],
 
   'createdAt': Timestamp.now(),
   'read': false,
 });
-
 
                                     Navigator.pop(context);
                                   },

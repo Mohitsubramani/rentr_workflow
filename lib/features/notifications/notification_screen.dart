@@ -65,10 +65,20 @@ else if (data['type'] == 'job_started') {
   subtitle =
       'Your job "${data['jobTitle']}" has been started';
 }
-
+else if (data['type'] == 'payment_success') {
+  title = 'Payment Received';
+  subtitle = data['message'] ?? 'Payment has been received';
+}
 
               return ListTile(
-                leading: const Icon(Icons.notifications),
+                leading: Icon(
+                  data['type'] == 'payment_success'
+                      ? Icons.check_circle
+                      : Icons.notifications,
+                  color: data['type'] == 'payment_success'
+                      ? Colors.green
+                      : Colors.grey,
+                ),
                 title: Text(
                   title,
                   style: const TextStyle(fontWeight: FontWeight.bold),

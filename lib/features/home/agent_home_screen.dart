@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../notifications/notification_screen.dart';
 import 'create_job_screen.dart';
+import '../services/razorpay_service.dart';
+import '../../core/services/email_service.dart';
+
 
 class AgentHomeScreen extends StatefulWidget {
   const AgentHomeScreen({super.key});
@@ -24,6 +26,15 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
     return doc.data()?['name'] ?? 'Unknown';
   }
 
+  Future<String> getJobName(String jobId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('jobs')
+        .doc(jobId)
+        .get();
+    if (!doc.exists) return 'Unknown Job';
+    return doc.data()?['title'] ?? 'Unknown Job';
+  }
+
   /* ───────── ASSIGN ───────── */
 
   Future<void> assignContractor(String jobId, String contractorId) async {
@@ -34,11 +45,32 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
         await FirebaseFirestore.instance.collection('jobs').doc(jobId).get();
 
     final jobTitle = jobDoc.data()?['title'] ?? 'Job';
+    final jobDescription = jobDoc.data()?['description'] ?? '';
+    final timeline = jobDoc.data()?['timeline'] as Timestamp?;
+
+    // Get contractor info for email
+    final contractorDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(contractorId)
+        .get();
+    final contractorEmail = contractorDoc.data()?['email'] ?? '';
+    final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
 
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
       'status': 'assigned',
       'assignedTo': contractorId,
     });
+
+    // Send email to contractor
+    if (contractorEmail.isNotEmpty) {
+      await EmailService.sendJobAssignedEmail(
+        contractorEmail: contractorEmail,
+        contractorName: contractorName,
+        jobTitle: jobTitle,
+        jobDescription: jobDescription,
+        timeline: timeline?.toDate() ?? DateTime.now(),
+      );
+    }
 
     await FirebaseFirestore.instance.collection('notifications').add({
       'type': 'job_assigned',
@@ -279,8 +311,16 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                      'Job ID: ${invoice['jobId']}'),
+                                  FutureBuilder<String>(
+                                    future: getJobName(invoice['jobId']),
+                                    builder: (context, snapshot) {
+                                      final jobName = snapshot.data ?? 'Loading...';
+                                      return Text(
+                                        'Job: $jobName',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      );
+                                    },
+                                  ),
                                   const SizedBox(height: 6),
                                   Text('Status: $status'),
 
@@ -386,55 +426,99 @@ await FirebaseFirestore.instance
                                     ),
                                   ],
 
-                                  if (status == 'revised')
-                                    Text(
-                                        'Waiting contractor approval for ₹$agentEditedAmount'),
-                                  if (status == 'pending')
+// 🔹 REVISED
+if (status == 'revised') ...[
+  Text(
+    'Waiting contractor approval for ₹$agentEditedAmount',
+  ),
+],
+
+// 🔹 PENDING
+if (status == 'pending') ...[
   const Text(
     'Waiting for contractor estimation',
     style: TextStyle(color: Colors.orange),
   ),
+],
 
-                                  if (status == 'unpaid')
-                                    ElevatedButton(
-                                      onPressed: () async {
-                                        await FirebaseFirestore
-                                            .instance
-                                            .collection(
-                                                'invoices')
-                                            .doc(doc.id)
-                                            .update({
-                                          'status': 'paid',
-                                          'paidAt':
-                                              Timestamp.now(),
-                                        });
+// ✅ PAID
+if (status == 'paid') ...[
+  const Text(
+    'Payment Completed',
+    style: TextStyle(
+      color: Colors.green,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+],
 
-                                        await FirebaseFirestore
-                                            .instance
-                                            .collection(
-                                                'notifications')
-                                            .add({
-                                          'type': 'invoice_paid',
-                                          'toUserId':
-                                              invoice['contractorId'],
-                                          'fromUserId':
-                                              user.uid,
-                                          'title':
-                                              'Payment Done',
-                                          'message':
-                                              'Payment completed for Job ${invoice['jobId']}',
-                                          'jobId':
-                                              invoice['jobId'],
-                                          'amount':
-                                              finalAmount,
-                                          'createdAt':
-                                              Timestamp.now(),
-                                          'read': false,
-                                        });
-                                      },
-                                      child: Text(
-                                          'Pay ₹$finalAmount'),
-                                    ),
+// 💰 UNPAID
+if (status == 'unpaid') ...[
+  ElevatedButton(
+    child: Text('Pay ₹$finalAmount'),
+    onPressed: () {
+      final razorpay = RazorpayService(
+        onSuccess: (paymentId) async {
+          // Get contractor info for email
+          final contractorDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(invoice['contractorId'])
+              .get();
+          final contractorEmail = contractorDoc.data()?['email'] ?? '';
+          final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
+
+          await FirebaseFirestore.instance
+              .collection('invoices')
+              .doc(doc.id)
+              .update({
+            'status': 'paid',
+            'paymentId': paymentId,
+            'paidAt': Timestamp.now(),
+          });
+
+          // Send email to contractor
+          if (contractorEmail.isNotEmpty) {
+            await EmailService.sendPaymentCompletedEmail(
+              contractorEmail: contractorEmail,
+              contractorName: contractorName,
+              jobTitle: invoice['jobTitle'] ?? 'Job',
+              amount: finalAmount,
+              paymentId: paymentId,
+            );
+          }
+
+          await FirebaseFirestore.instance
+              .collection('notifications')
+              .add({
+            'type': 'payment_success',
+            'toUserId': invoice['contractorId'],
+            'fromUserId': user.uid,
+            'title': 'Payment Received',
+            'message':
+                'Payment ₹$finalAmount received for Job ${invoice['jobId']}',
+            'jobId': invoice['jobId'],
+            'createdAt': Timestamp.now(),
+            'read': false,
+          });
+        },
+        onError: (error) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+        },
+        onExternalWallet: (wallet) {},
+      );
+
+      razorpay.openCheckout(
+        amount: (finalAmount * 100).toInt(),
+        jobId: invoice['jobId'],
+        description: 'Payment for job ${invoice['jobId']}',
+        customerName: 'Agent',
+        customerEmail: user.email ?? '',
+      );
+    },
+  ),
+],
                                 ],
                               ),
                             ),
