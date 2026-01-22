@@ -44,33 +44,30 @@ class NotificationScreen extends StatelessWidget {
               final data =
                   notifications[index].data() as Map<String, dynamic>;
 
-              String title = '';
-              String subtitle = '';
+              String title = data['title'] ?? 'Notification';
+              String subtitle = data['message'] ?? '';
 
+              // Handle specific notification types for better formatting
               if (data['type'] == 'job_applied') {
-  title = 'New Job Application';
-  subtitle =
-      '${data['fromUserName']} applied for your job "${data['jobTitle']}"';
-}
- else if (data['type'] == 'job_assigned') {
+                title = 'New Job Application';
+                subtitle =
+                    '${data['fromUserName']} applied for your job "${data['jobTitle']}"';
+              } else if (data['type'] == 'job_assigned') {
                 title = 'Job Assigned';
                 subtitle =
                     'You have been assigned to "${data['jobTitle']}"';
+              } else if (data['type'] == 'job_completed') {
+                title = 'Job Completed';
+                subtitle =
+                    'Your job "${data['jobTitle']}" has been completed';
+              } else if (data['type'] == 'job_started') {
+                title = 'Job Started';
+                subtitle =
+                    'Your job "${data['jobTitle']}" has been started';
+              } else if (data['type'] == 'payment_success') {
+                title = 'Payment Received';
+                subtitle = data['message'] ?? 'Payment has been received';
               }
-  else if (data['type'] == 'job_completed') {
-  title = 'Job Completed';
-  subtitle =
-      'Your job "${data['jobTitle']}" has been completed';
-}
-else if (data['type'] == 'job_started') {
-  title = 'Job Started';
-  subtitle =
-      'Your job "${data['jobTitle']}" has been started';
-}
-else if (data['type'] == 'payment_success') {
-  title = 'Payment Received';
-  subtitle = data['message'] ?? 'Payment has been received';
-}
 
               return ListTile(
                 leading: Icon(
@@ -85,7 +82,11 @@ else if (data['type'] == 'payment_success') {
                   title,
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text(subtitle),
+                subtitle: Text(
+                  subtitle.isNotEmpty ? subtitle : 'No details available',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               );
             },
           );
