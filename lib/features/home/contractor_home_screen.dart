@@ -125,6 +125,9 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         appBar: AppBar(
           title: const Text('Contractor Home'),
           bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
             tabs: [
               Tab(text: 'Available Jobs'),
               Tab(text: 'My Jobs'),

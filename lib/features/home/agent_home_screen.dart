@@ -207,6 +207,9 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
           title: const Text('Agent Dashboard'),
           elevation: 0,
           bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
             tabs: [
               Tab(text: 'Active Jobs', icon: Icon(Icons.work_outline)),
               Tab(text: 'Completed', icon: Icon(Icons.check_circle_outline)),
