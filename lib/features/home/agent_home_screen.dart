@@ -4,9 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../notifications/notification_screen.dart';
 import 'create_job_screen.dart';
 import '../services/razorpay_service.dart';
-import '../../core/services/email_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/custom_widgets.dart';
+import '../../core/services/n8n_webhook_service.dart';
 
 
 class AgentHomeScreen extends StatefulWidget {
@@ -50,29 +50,11 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
     final jobDescription = jobDoc.data()?['description'] ?? '';
     final timeline = jobDoc.data()?['timeline'] as Timestamp?;
 
-    // Get contractor info for email
-    final contractorDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(contractorId)
-        .get();
-    final contractorEmail = contractorDoc.data()?['email'] ?? '';
-    final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
-
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
       'status': 'assigned',
       'assignedTo': contractorId,
     });
 
-    // Send email to contractor
-    if (contractorEmail.isNotEmpty) {
-      await EmailService.sendJobAssignedEmail(
-        contractorEmail: contractorEmail,
-        contractorName: contractorName,
-        jobTitle: jobTitle,
-        jobDescription: jobDescription,
-        timeline: timeline?.toDate() ?? DateTime.now(),
-      );
-    }
 
     await FirebaseFirestore.instance.collection('notifications').add({
       'type': 'job_assigned',
@@ -561,14 +543,6 @@ if (status == 'unpaid') ...[
     onPressed: () {
       final razorpay = RazorpayService(
         onSuccess: (paymentId) async {
-          // Get contractor info for email
-          final contractorDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(invoice['contractorId'])
-              .get();
-          final contractorEmail = contractorDoc.data()?['email'] ?? '';
-          final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
-
           await FirebaseFirestore.instance
               .collection('invoices')
               .doc(doc.id)
@@ -578,16 +552,22 @@ if (status == 'unpaid') ...[
             'paidAt': Timestamp.now(),
           });
 
-          // Send email to contractor
-          if (contractorEmail.isNotEmpty) {
-            await EmailService.sendPaymentCompletedEmail(
-              contractorEmail: contractorEmail,
-              contractorName: contractorName,
-              jobTitle: invoice['jobTitle'] ?? 'Job',
-              amount: finalAmount,
-              paymentId: paymentId,
+          try {
+            await N8nWebhookService.sendEvent(
+              event: 'payment_completed',
+              payload: {
+                'invoiceId': doc.id,
+                'jobId': invoice['jobId'],
+                'agentId': user.uid,
+                'contractorId': invoice['contractorId'],
+                'amount': finalAmount,
+                'paymentId': paymentId,
+              },
             );
+          } catch (e) {
+            debugPrint('n8n payment_completed failed: $e');
           }
+
 
           await FirebaseFirestore.instance
               .collection('notifications')

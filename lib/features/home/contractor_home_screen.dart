@@ -3,10 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../notifications/notification_screen.dart';
-import '../portfolio/add_work_screen.dart';
-import '../../core/services/email_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/custom_widgets.dart';
+import '../../core/services/n8n_webhook_service.dart';
 
 class ContractorHomeScreen extends StatefulWidget {
   const ContractorHomeScreen({super.key});
@@ -157,19 +156,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           ],
         ),
 
-        floatingActionButton: _currentTabIndex == 3
-            ? FloatingActionButton(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AddWorkScreen(),
-                    ),
-                  );
-                },
-                child: const Icon(Icons.add),
-              )
-            : null,
 
         body: user == null
             ? const Center(child: Text('User not found'))
@@ -295,21 +281,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                             ? 'in_progress'
                             : 'completed';
 
-                        // Get agent info for email
-                        final agentDoc = await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(job['agentId'])
-                            .get();
-                        final agentEmail = agentDoc.data()?['email'] ?? '';
-                        final agentName = agentDoc.data()?['name'] ?? 'Agent';
-
-                        // Get contractor info
-                        final contractorDoc = await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(uid)
-                            .get();
-                        final contractorName = contractorDoc.data()?['name'] ?? 'Contractor';
-
                         await FirebaseFirestore.instance
                             .collection('jobs')
                             .doc(doc.id)
@@ -318,23 +289,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           if (newStatus == 'completed')
                             'completedAt': Timestamp.now(),
                         });
-
-                        // Send email notification
-                        if (newStatus == 'in_progress') {
-                          await EmailService.sendJobStartedEmail(
-                            agentEmail: agentEmail,
-                            agentName: agentName,
-                            contractorName: contractorName,
-                            jobTitle: job['title'] ?? 'Job',
-                          );
-                        } else if (newStatus == 'completed') {
-                          await EmailService.sendJobCompletedEmail(
-                            agentEmail: agentEmail,
-                            agentName: agentName,
-                            contractorName: contractorName,
-                            jobTitle: job['title'] ?? 'Job',
-                          );
-                        }
 
                         await FirebaseFirestore.instance
     .collection('notifications')
@@ -599,6 +553,23 @@ await FirebaseFirestore.instance.collection('notifications').add({
   'createdAt': Timestamp.now(),
   'read': false,
 });
+
+                                    try {
+                                      await N8nWebhookService.sendEvent(
+                                        event: 'invoice_estimated',
+                                        payload: {
+                                          'invoiceId': doc.id,
+                                          'jobId': data['jobId'],
+                                          'agentId': data['agentId'],
+                                          'contractorId': uid,
+                                          'amount': v,
+                                        },
+                                      );
+                                    } catch (e) {
+                                      debugPrint(
+                                        'n8n invoice_estimated failed: $e',
+                                      );
+                                    }
 
                                     Navigator.pop(context);
                                   },
